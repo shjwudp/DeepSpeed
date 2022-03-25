@@ -2467,7 +2467,7 @@ class DeepSpeedEngine(Module):
             # Pipeline parallelism uses this to load its own checkpoint files.
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
-        if self.has_moe_layers:
+        if not is_pipe_parallel and self.has_moe_layers:
             # print(checkpoint.keys())
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
@@ -2834,8 +2834,14 @@ class DeepSpeedEngine(Module):
             torch.save(optimizer_state, fd)
             fd.flush()
 
-        # get non-moe parameters
-        model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
+        is_pipe_parallel = isinstance(self.module, PipelineModule)
+        if is_pipe_parallel:
+            # Pipeline module is stored separately, set model_state_dict to None
+            self.module.save_state_dict(self._curr_ckpt_path)
+            model_state_dict = None
+        else:
+            # get non-moe parameters
+            model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
