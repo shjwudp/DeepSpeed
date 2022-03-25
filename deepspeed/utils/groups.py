@@ -24,6 +24,8 @@ Copyright 2021 The Microsoft DeepSpeed Team
  For inference and other new scenarios, the code will be either reused or added to this file.
 """
 
+import copy
+
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 from deepspeed.utils import logger, log_dist
@@ -203,6 +205,51 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     return expert_parallel_groups, expert_data_parallel_groups
 
 
+def _get_expert_parallel_ranks(world_size, pipe_parallel_size, model_parallel_size):
+    """Generate expert parallel and expert data parallel group ranks list.
+
+        Example - P + M + D + E parallel
+        world_size = 16
+        pipe_parallel = 2
+        model_parallel = 2
+        pp_group =  [0,1,2,3,4,5,6,7],                   [8,9,10,11,12,13,14,15]
+        mp_group =  [0,1], [2,3], [4,5], [6,7]           [8,9], [10,11], [12,13], [14,15]
+        dp_group =  [0,2,4,6],       [1,3,5,7]           [8,10,12,14],       [9,11,13,15]
+        ep_group =  [0,2,4,6],       [1,3,5,7]           [8,10,12,14],       [9,11,13,15]
+        edp_group = [0],[2],[4],[6], [1],[3],[5],[7],    [8],[10],[12],[14], [9],[11],[13],[15]
+
+    Args:
+        world_size (int): Distributed world size.
+        pipe_parallel_size (int): Number of parallel stages of the pipeline.
+        model_parallel_size (int): Model parallel group size.
+
+    Returns:
+        Expert parallel group ranks and Expert data parallel group ranks list.
+    """
+    model_parallel_size = 1
+    _ensure_divisibility(world_size, pipe_parallel_size)
+    pp_stage_size = world_size // pipe_parallel_size
+    _ensure_divisibility(pp_stage_size, model_parallel_size)
+
+    expert_parallel_groups = []
+    expert_data_parallel_groups = []
+
+    # Generate data parallel groups
+    data_parallel_groups = []
+    for i in range(0, world_size, pp_stage_size):
+        pipe_ranks = list(range(i, i + pp_stage_size, 1))
+        for j in range(model_parallel_size):
+            data_parallel_groups.append(
+                [pipe_ranks[k] for k in range(j,
+                                              pp_stage_size,
+                                              model_parallel_size)])
+
+    expert_parallel_groups = copy.deepcopy(data_parallel_groups)
+    expert_data_parallel_groups = [[i] for i in range(world_size)]
+
+    return expert_parallel_groups, expert_data_parallel_groups
+
+
 def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     """
         Create expert and data parallel groups based on MPU (model parallel) group.
@@ -219,6 +266,7 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
         expert_data_parallel_group = [0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[7,15]
     """
     assert torch.distributed.is_initialized(), "torch distributed is not initialized"
+    pipe_parallel_size_ = mpu.get_pipe_parallel_world_size()
     model_parallel_size_ = mpu.get_model_parallel_world_size()
 
     world_size = torch.distributed.get_world_size()
@@ -245,7 +293,7 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     # Need to check conditions outside the group creation loop because of the way torch.dist group creation works
     if group_name not in _EXPERT_DATA_PARALLEL_GROUP and group_name not in _EXPERT_PARALLEL_GROUP:
         expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks(
-            world_size, model_parallel_size_, expert_parallel_size_)
+            world_size, pipe_parallel_size_, model_parallel_size_)
         for ranks in expert_parallel_groups:
             group = torch.distributed.new_group(ranks)
             if rank in list(ranks):
