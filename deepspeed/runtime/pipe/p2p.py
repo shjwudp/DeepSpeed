@@ -39,7 +39,8 @@ def send(tensor, dest_stage, async_op=False, fp32_comm=False):
         tensor_to_broadcast = tensor_to_broadcast.float()
     group = _get_send_recv_group(src_stage, dest_stage)
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-    dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    dist.barrier(group=group, async_op=async_op)
+    # dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
     if fp32_comm and tensor is not tensor_to_broadcast:
         tensor.copy_(tensor_to_broadcast)
 
@@ -56,7 +57,8 @@ def recv(tensor, src_stage, async_op=False, fp32_comm=False):
         tensor_to_broadcast = tensor_to_broadcast.float()
     group = _get_send_recv_group(src_stage, dest_stage)
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-    dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    dist.barrier(group=group, async_op=async_op)
+    # dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
     if fp32_comm and tensor is not tensor_to_broadcast:
         tensor.copy_(tensor_to_broadcast)
 
