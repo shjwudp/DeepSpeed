@@ -28,6 +28,18 @@ def _is_valid_send_recv(src_stage, dest_stage):
     "Functionality currently limited to send and receive between adjacent ranks only"
 
 
+import torch
+
+
+def init_method_normal(sigma):
+    """Init method based on N(0, sigma)."""
+
+    def init_(tensor):
+        return torch.nn.init.normal_(tensor, mean=0.0, std=sigma)
+
+    return init_
+
+
 def send(tensor, dest_stage, async_op=False, fp32_comm=False):
     global _groups
 
@@ -39,8 +51,10 @@ def send(tensor, dest_stage, async_op=False, fp32_comm=False):
         tensor_to_broadcast = tensor_to_broadcast.float()
     group = _get_send_recv_group(src_stage, dest_stage)
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-    dist.barrier(group=group, async_op=async_op)
-    # dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    if tensor_to_broadcast.numel() < 10:
+        dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    else:
+        dist.barrier(group=group)
     if fp32_comm and tensor is not tensor_to_broadcast:
         tensor.copy_(tensor_to_broadcast)
 
@@ -57,8 +71,10 @@ def recv(tensor, src_stage, async_op=False, fp32_comm=False):
         tensor_to_broadcast = tensor_to_broadcast.float()
     group = _get_send_recv_group(src_stage, dest_stage)
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-    dist.barrier(group=group, async_op=async_op)
-    # dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    if tensor_to_broadcast.numel() < 10:
+        dist.broadcast(tensor_to_broadcast, src_rank, group=group, async_op=async_op)
+    else:
+        dist.barrier(group=group)
     if fp32_comm and tensor is not tensor_to_broadcast:
         tensor.copy_(tensor_to_broadcast)
 
