@@ -2526,6 +2526,7 @@ class DeepSpeedEngine(Module):
                                                 num_experts=self.num_experts)
 
         if is_pipe_parallel:
+            self.load_module_state_dict(state_dict=None, strict=False)
             self.load_module_state_dict(state_dict=checkpoint['module'], strict=False)
         else:
             self.load_module_state_dict(state_dict=checkpoint['module'],
