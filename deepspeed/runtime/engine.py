@@ -2575,9 +2575,9 @@ class DeepSpeedEngine(Module):
                                                 num_experts=self.num_experts)
 
         if is_pipe_parallel and self.has_moe_layers:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=False,
-                                        custom_load_fn=custom_load_fn)
+            assert custom_load_fn is None, "Not support custom_load_fn in pipeline MoE model."
+            self.load_module_state_dict(state_dict=None, strict=False)
+            self.load_module_state_dict(state_dict=checkpoint['module'], strict=False)
         else:
             self.load_module_state_dict(state_dict=checkpoint['module'],
                                         strict=load_module_strict,
